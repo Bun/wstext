@@ -13,11 +13,13 @@ import (
 
 var (
 	// TODO: support multiple backends on the same server
-	path    = flag.String("path", "/ws", "WebSocket path (default: any)")
+	path    = flag.String("path", "/ws", "WebSocket path (empty: any)")
 	backend = flag.String("backend", "127.0.0.1:6600", "Backend address")
 
-	static = flag.String("static-dir", "", "Serve static files")
-	bind   = flag.String("bind", "[::1]:13542", "Bind address")
+	static   = flag.String("static-dir", "", "Serve static files")
+	bind     = flag.String("bind", ":13542", "Bind address")
+	tls_key  = flag.String("key", "", "TLS key")
+	tls_cert = flag.String("cert", "", "TLS certificate")
 )
 
 var upgrader = websocket.Upgrader{
@@ -104,7 +106,7 @@ func (p *ProxyHandler) proxy(w http.ResponseWriter, r *http.Request) {
 func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Println("Serve:", r.URL.Path)
 
-	if path != nil && *path == r.URL.Path {
+	if *path == "" || *path == r.URL.Path {
 		p.proxy(w, r)
 		return
 	}
@@ -117,12 +119,11 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	log.Println("wstext")
 	flag.Parse()
+	log.Println("wstext")
 
 	var fs http.Handler
-	log.Printf("%+q", *static)
-	if static != nil && *static != "" {
+	if *static != "" {
 		log.Println("Static files path:", *static)
 		fs = http.FileServer(http.Dir(*static))
 	}
@@ -135,5 +136,13 @@ func main() {
 		Handler:        &ProxyHandler{fs},
 	}
 
-	ws.ListenAndServe()
+	var err error
+	if *tls_key != "" || *tls_cert != "" {
+		err = ws.ListenAndServeTLS(*tls_cert, *tls_key)
+	} else {
+		err = ws.ListenAndServe()
+	}
+	if err != nil {
+		log.Fatalln("Server error:", err)
+	}
 }
